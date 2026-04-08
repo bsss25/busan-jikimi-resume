@@ -1,0 +1,6 @@
+streamlit
+Pillow
+pillow-heif
+reportlab
+streamlit-drawable-canvas
+pypdf
