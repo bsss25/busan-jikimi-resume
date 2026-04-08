@@ -297,8 +297,27 @@ with st.form("submit_section"):
 """)
 
     canvas_sig1 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig1")
+# ⭐ [복구 완료] 개인정보 동의 문구 구역
+    st.write("---")
+    st.subheader("개인정보 수집 및 제3자 제공 동의 절차")
+    st.info("부산광역시교육청학교행정지원본부는 배움터지킴이 자원봉사자 위촉을 위해 다음과 같이 개인정보를 수집‧이용합니다.")
+    st.markdown("""           
+* **개인정보 수집 항목:** 성명, 생년월일, 주소, 연락처 등
+* **수집 목적:** 배움터지킴이 자원봉사자 위촉
+* **보유 기간:** 1년
+""")
     agree1 = st.radio("개인정보 수집 및 이용 동의", ["예", "아니요"], index=0, key="agree1_btn")
+
+    st.info("부산광역시교육청학교행정지원본부는 다음과 같이 개인정보를 제3자에게 제공할 수 있습니다.")
+    st.markdown("""             
+* **제공받는 기관:** 부산 관내 학교(유치원)
+* **제공 목적:** 배움터지킴이 자원봉사자 위촉
+* **제공 항목:** 성명, 생년월일, 주소, 연락처, 희망학교, 경력, 자격 등
+* **보유 기간:** 1년
+""")
     agree2 = st.radio("개인정보 제3자 제공 동의", ["예", "아니요"], index=0, key="agree2_btn")
+    
+    st.write("✒️ **본인은 개인정보 수집·이용 및 제3자 제공을 동의하며, 이에 서명합니다.**")
     canvas_sig2 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig2")
 
     submit_clicked = st.form_submit_button("✅ 모든 서류 통합하여 제출하기", disabled=st.session_state.get('submitting', False))
