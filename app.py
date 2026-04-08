@@ -218,29 +218,47 @@ if st.session_state.get('complete', False):
     st.info("💡 다시 작성하시려면 브라우저의 '새로고침' 버튼을 눌러주세요.")
     st.stop()
 
+# 1. 학교명 파라미터 처리
+url_school = st.query_params.get("school", "")
+
 col1, col2 = st.columns(2)
+
+# 1. URL에서 학교명 가져오기
+url_school = st.query_params.get("school", "")
+
 with col1:
-    school = st.text_input("**지원 기관명** (예: OO초등학교)", max_chars=30)
+    # 들여쓰기 주의! with col1 안쪽으로 다 들어와야 함
+    if url_school:
+        school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
+        st.caption(f"ℹ️ {url_school} 지원 페이지입니다.")
+    else:
+        school = st.text_input("**지원 기관명** (예: OO초등학교)", max_chars=30)
+    
+    # ⭐ [핵심] name과 birth는 if/else 밖으로 빼야 학교명이 고정되어도 보임!
     name = st.text_input("**지원자 성명**", max_chars=10)
     birth = st.text_input("**생년월일** (예: 1960.01.01)", max_chars=15)
+
 with col2:
     hphone = st.text_input("**휴대전화 번호**", max_chars=15)
     phone = st.text_input("일반전화(없으면 비워두기)", max_chars=15)
+
 addr = st.text_input("거주지 주소", max_chars=70)
 
-has_exp = st.radio("배움터지킴이 경력 유무(배움터지킴이 활동 실적 증명서 제출해야 점수 인정됨)", ["없음", "있음"], horizontal=True)
+# 경력 및 나머지 사항들
+has_exp = st.radio("배움터지킴이 경력 유무(실적 증명서 제출 필수)", ["없음", "있음"], horizontal=True)
 
 exp_data = []
 if has_exp == "있음":
     for i in range(3):
         c_t, c_i = st.columns([1, 1])
-        p = c_t.text_input(f"{i+1}. 활동 기간(예시: 2023.03.01.~2024.02.29)", key=f"p_{i}", max_chars=30)
-        a = c_i.text_input(f"{i+1}. 기관명(OO초등학교)", key=f"a_{i}", max_chars=30)
+        p = c_t.text_input(f"{i+1}. 활동 기간", key=f"p_{i}", max_chars=30)
+        a = c_i.text_input(f"{i+1}. 기관명", key=f"a_{i}", max_chars=30)
         exp_data.append({"period": p, "agency": a})
-else: exp_data = [{"period": "", "agency": ""}] * 3
+else: 
+    exp_data = [{"period": "", "agency": ""}] * 3
 
-license = st.text_input("관련 자격증(예: 학교안전지도사1급)", max_chars=30)
-job = st.text_input("직업(전직)(예: 경찰공무원, 군인, 교도관)", max_chars=15)
+license = st.text_input("관련 자격증", max_chars=30)
+job = st.text_input("직업(전직)", max_chars=15)
 hobby = st.text_input("취미 및 특기", max_chars=30)
 motive = st.text_area("지원 동기", max_chars=200)
 
@@ -252,20 +270,18 @@ with st.form("submit_section"):
     st.subheader("📁 서류 첨부")
     u_photo = st.file_uploader("본인 사진(되도록 증명사진이 좋음)", type=["jpg", "jpeg", "png"])
     
-    st.write("배움터지킴이 활동 실적 확인서(최대 3개) - **해당자만 제출**")
     col_p1, col_p2, col_p3 = st.columns(3)
     p1 = col_p1.file_uploader("실적 1", type=["jpg", "jpeg", "png", "pdf"], key="u_p1")
     p2 = col_p2.file_uploader("실적 2", type=["jpg", "jpeg", "png", "pdf"], key="u_p2")
     p3 = col_p3.file_uploader("실적 3", type=["jpg", "jpeg", "png", "pdf"], key="u_p3")
 
-    st.write("관련 자격증(최대 3개) - **보유자만 제출**")
     col_l1, col_l2, col_l3 = st.columns(3)
     l1 = col_l1.file_uploader("자격증 1", type=["jpg", "jpeg", "png", "pdf"], key="u_l1")
     l2 = col_l2.file_uploader("자격증 2", type=["jpg", "jpeg", "png", "pdf"], key="u_l2")
     l3 = col_l3.file_uploader("자격증 3", type=["jpg", "jpeg", "png", "pdf"], key="u_l3")
 
-    u_cert = st.file_uploader("직업(전직) 경력 증명서 - **필수 아님**", type=["jpg", "jpeg", "png", "pdf"])
-    u_etc = st.file_uploader("기타 서류 - **필수 아님**", type=["jpg", "jpeg", "png", "pdf"])
+    u_cert = st.file_uploader("직업(전직) 경력 증명서", type=["jpg", "jpeg", "png", "pdf"])
+    u_etc = st.file_uploader("기타 서류", type=["jpg", "jpeg", "png", "pdf"])
 
     st.write("---")
     st.subheader("위촉 시 결격사유 없음 확인 절차")
@@ -280,53 +296,33 @@ with st.form("submit_section"):
 4.「아동복지법」에 따라 아동학대관련 범죄로 형 또는 치료감호를 선고받아 확정되고, 그 확정된 때부터 형 또는 치료감호의 전부 또는 일부의 집행이 종료되거나 집행을 받지 아니하기로 확정된 후 10년이 경과하지 아니한 사람
 """)
 
-    st.write("✒️ **지원자 본인은 위 결격사유에 해당하지 않음을 확인하며, 이에 서명합니다.**")
     canvas_sig1 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig1")
-
-    st.write("---")
-    st.subheader("개인정보 수집 및 제3자 제공 동의 절차")
-    st.info("부산광역시교육청학교행정지원본부는 배움터지킴이 자원봉사자 위촉을 위해 다음과 같이 개인정보를 수집‧이용합니다. 내용을 자세히 읽으신 후 동의 여부를 결정하여 주십시오.")
-    st.markdown("""           
-* **개인정보 수집 항목:** 성명, 생년월일, 주소, 연락처 등
-* **수집 목적:** 배움터지킴이 자원봉사자 위촉
-* **보유 기간:** 1년
-""")
     agree1 = st.radio("개인정보 수집 및 이용 동의", ["예", "아니요"], index=0, key="agree1_btn")
-
-    st.info("부산광역시교육청학교행정지원본부는 배움터지킴이 자원봉사자 위촉을 위해 다음과 같이 개인정보를 제3자에게 제공할 수 있습니다. 내용을 자세히 읽으신 후 동의 여부를 결정하여 주십시오.")
-    st.markdown("""             
-* **제공받는 기관:** 부산 관내 학교(유치원)
-* **제공 목적:** 배움터지킴이 자원봉사자 위촉
-* **제공 항목:** 성명, 생년월일, 주소, 연락처, 희망학교, 경력, 자격 등
-* **보유 기간:** 1년
-""")
     agree2 = st.radio("개인정보 제3자 제공 동의", ["예", "아니요"], index=0, key="agree2_btn")
-
-    st.write("✒️ **지원자 본인은 개인정보 수집·이용 및 제3자 제공을 동의하며, 이에 서명합니다.**")
     canvas_sig2 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig2")
 
     submit_clicked = st.form_submit_button("✅ 모든 서류 통합하여 제출하기", disabled=st.session_state.get('submitting', False))
 
 # --- [5] 제출 로직 ---
-if submit_clicked and not st.session_state.submitting:
+if submit_clicked and not st.session_state.get('submitting', False):
     all_files = [u_photo, p1, p2, p3, l1, l2, l3, u_cert, u_etc]
     oversized = [f.name for f in all_files if f is not None and not check_file_size(f)]
     
     if not school or not name or not birth or not hphone:
         st.error("⚠️ 필수 항목을 입력해 주세요!")
     elif oversized:
-        st.error(f"⚠️ 파일 용량이 너무 큽니다(10MB 제한): {', '.join(oversized)}")
+        st.error(f"⚠️ 10MB 초과 파일: {', '.join(oversized)}")
     elif agree1 == "아니요" or agree2 == "아니요":
-        st.error("⚠️ 모든 동의 항목에 '예'를 선택해야 합니다.")
+        st.error("⚠️ 개인정보 동의가 필요합니다.")
     elif not canvas_main.image_data.any() or not canvas_sig1.image_data.any() or not canvas_sig2.image_data.any():
-        st.error("⚠️ 서명을 누락했습니다. 3곳 모두 서명해주세요.")
+        st.error("⚠️ 서명 3곳을 모두 완료해주세요.")
     else:
-        st.session_state.submitting = True
+        st.session_state['submitting'] = True
         st.rerun()
 
 if st.session_state.get('submitting', False):
     try:
-        # 데이터 세탁
+        # 데이터 보안 세탁
         safe_data = {
             'school': clean_text(school, 30),
             'name': clean_text(name, 10),
@@ -343,9 +339,10 @@ if st.session_state.get('submitting', False):
             'agree1': agree1, 'agree2': agree2
         }
 
-        with st.spinner("📦 지원 서류 생성 및 병합 중..."):
+        with st.spinner("📦 지원 서류 생성 중..."):
             doc_pages = make_documents(safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
             
+            # 첨부파일 정리
             u_perf = [(f, "실적") for f in [p1, p2, p3] if f]
             u_lic = [(f, "자격") for f in [l1, l2, l3] if f]
             extras = u_perf + u_lic
@@ -355,10 +352,10 @@ if st.session_state.get('submitting', False):
             final_pdf = create_combined_pdf(doc_pages, extras)
             send_email(final_pdf, safe_data['name'], safe_data['school'])
             
-        st.session_state.submitting = False
-        st.session_state.complete = True 
+        st.session_state['submitting'] = False
+        st.session_state['complete'] = True 
         st.rerun()
     except Exception as e:
         st.error(f"❌ 전송 오류: {e}")
-        st.session_state.submitting = False
+        st.session_state['submitting'] = False
         st.rerun()
