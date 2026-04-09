@@ -21,13 +21,18 @@ from pillow_heif import register_heif_opener
 # 아이폰 사진(HEIC) 호환 설정
 register_heif_opener()
 
-# --- [0] 세션 상태 초기화 ---
-if 'step' not in st.session_state:
-    st.session_state.step = 'edit'  # 'edit' -> 'preview' -> 'complete'
-if 'temp_pdf' not in st.session_state:
-    st.session_state.temp_pdf = None
-if 'safe_data' not in st.session_state:
-    st.session_state.safe_data = {}
+# --- [0] 세션 상태 초기화 (백지화 방지용 기억장치) ---
+# 기존 초기화에 더해서 입력 필드들도 미리 만들어둬야 함
+if 'step' not in st.session_state: st.session_state.step = 'edit'
+if 'temp_pdf' not in st.session_state: st.session_state.temp_pdf = None
+if 'safe_data' not in st.session_state: st.session_state.safe_data = {}
+
+# 입력값 유지를 위한 필드 초기화
+fields = ['school_val', 'name_val', 'birth_val', 'hphone_val', 'phone_val', 'addr_val', 'license_val', 'job_val', 'hobby_val', 'motive_val']
+for f in fields:
+    if f not in st.session_state: st.session_state[f] = ""
+if 'has_exp_val' not in st.session_state: st.session_state.has_exp_val = "없음"
+if 'exp_data_val' not in st.session_state: st.session_state.exp_data_val = [{"period": "", "agency": ""}] * 3
 
 # --- 보안 설정 (Secrets 활용) ---
 GMAIL_USER = st.secrets["GMAIL_USER"]
@@ -218,31 +223,39 @@ if st.session_state.step == 'edit':
         if url_school:
             school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
         else:
-            school = st.text_input("**지원 기관명** (예: OO초등학교)", max_chars=30)
-        name = st.text_input("**지원자 성명**", max_chars=10)
-        birth = st.text_input("**생년월일** (예: 1960.01.01)", max_chars=15)
+            # value에 세션 상태값을 넣어줌으로써 백지화 방지
+            school = st.text_input("**지원 기관명** (예: OO초등학교)", value=st.session_state.school_val, max_chars=30)
+        
+        name = st.text_input("**지원자 성명**", value=st.session_state.name_val, max_chars=10)
+        birth = st.text_input("**생년월일** (예: 1960.01.01)", value=st.session_state.birth_val, max_chars=15)
     with col2:
-        hphone = st.text_input("**휴대전화 번호**", max_chars=15)
-        phone = st.text_input("일반전화(없으면 비워두기)", max_chars=15)
-    addr = st.text_input("거주지 주소", max_chars=70)
+        hphone = st.text_input("**휴대전화 번호**", value=st.session_state.hphone_val, max_chars=15)
+        phone = st.text_input("일반전화(없으면 비워두기)", value=st.session_state.phone_val, max_chars=15)
+    
+    addr = st.text_input("거주지 주소", value=st.session_state.addr_val, max_chars=70)
 
-    has_exp = st.radio("배움터지킴이 경력 유무(실적 증명서 제출 필수)", ["없음", "있음"], horizontal=True)
+    # 라디오 버튼 인덱스 처리
+    exp_idx = 0 if st.session_state.has_exp_val == "없음" else 1
+    has_exp = st.radio("배움터지킴이 경력 유무(실적 증명서 제출 필수)", ["없음", "있음"], index=exp_idx, horizontal=True)
+    
     exp_data = []
     if has_exp == "있음":
         for i in range(3):
             c_t, c_i = st.columns([1, 1])
-            p = c_t.text_input(f"{i+1}. 활동 기간", key=f"p_{i}", max_chars=30)
-            a = c_i.text_input(f"{i+1}. 기관명", key=f"a_{i}", max_chars=30)
+            p = c_t.text_input(f"{i+1}. 활동 기간", value=st.session_state.exp_data_val[i]['period'], key=f"p_{i}", max_chars=30)
+            a = c_i.text_input(f"{i+1}. 기관명", value=st.session_state.exp_data_val[i]['agency'], key=f"a_{i}", max_chars=30)
             exp_data.append({"period": p, "agency": a})
     else: exp_data = [{"period": "", "agency": ""}] * 3
 
-    license = st.text_input("관련 자격증", max_chars=30)
-    job = st.text_input("직업(전직)", max_chars=15)
-    hobby = st.text_input("취미 및 특기", max_chars=30)
-    motive = st.text_area("지원 동기", max_chars=200)
+    license = st.text_input("관련 자격증", value=st.session_state.license_val, max_chars=30)
+    job = st.text_input("직업(전직)", value=st.session_state.job_val, max_chars=15)
+    hobby = st.text_input("취미 및 특기", value=st.session_state.hobby_val, max_chars=30)
+    motive = st.text_area("지원 동기", value=st.session_state.motive_val, max_chars=200)
 
     with st.form("submit_section"):
         st.write("✒️ **위와 같이 배움터지킴이 자원봉사활동을 신청하며, 기재사항은 사실과 다름없음을 확인하고, 이에 서명합니다.**")
+        # 캔버스는 상태 저장이 안되므로 문구 추가
+        st.caption("⚠️ 주의: 서명은 '미리보기' 클릭 전 마지막에 해주세요. (수정 시 다시 서명 필요)")
         canvas_main = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_main")
 
         st.write("---")
@@ -300,8 +313,22 @@ if st.session_state.step == 'edit':
         preview_clicked = st.form_submit_button("🔍 작성 내용 미리보기")
 
     if preview_clicked:
+        # **중요: 미리보기 가기 전에 입력값을 세션에 저장**
+        st.session_state.school_val = school
+        st.session_state.name_val = name
+        st.session_state.birth_val = birth
+        st.session_state.hphone_val = hphone
+        st.session_state.phone_val = phone
+        st.session_state.addr_val = addr
+        st.session_state.has_exp_val = has_exp
+        st.session_state.exp_data_val = exp_data
+        st.session_state.license_val = license
+        st.session_state.job_val = job
+        st.session_state.hobby_val = hobby
+        st.session_state.motive_val = motive
+
         if not school or not name or not birth or not hphone:
-            st.error("⚠️ 이름, 생년월일, 휴대폰 번호는 필수 입력 항목입니다!")
+            st.error("⚠️ 지원 기관명, 성명, 생년월일, 휴대폰 번호는 필수 입력 항목입니다!")
         elif agree1 == "아니요" or agree2 == "아니요":
             st.error("⚠️ 개인정보 수집·이용·제3자제공 동의가 필요합니다.")
         elif not canvas_main.image_data.any() or not canvas_sig1.image_data.any() or not canvas_sig2.image_data.any():
@@ -330,12 +357,17 @@ if st.session_state.step == 'edit':
 # [2] 미리보기 페이지
 elif st.session_state.step == 'preview':
     st.title("🔍 서류 확인 및 최종 제출")
-    st.info("💡 아래 서류가 올바르게 작성되었는지 확인해주세요. 휴대폰 기종에 따라 PDF가 안 보일 수 있으나 '저장' 버튼을 눌러 확인 가능합니다.")
+    st.info("💡 서류를 확인해주세요. 화면이 하얗게 보인다면 아래 '서류 보기' 버튼을 눌러주세요.")
     
     # PDF 미리보기
     base64_pdf = base64.b64encode(st.session_state.temp_pdf).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+    
+    # **하얀 화면 해결책: 아이프레임 외에 직접 링크 추가**
+    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" style="border:1px solid #eee;"></iframe>'
     st.markdown(pdf_display, unsafe_allow_html=True)
+    
+    # 아이프레임이 안 뜨는 모바일을 위한 직접 열기 버튼
+    st.markdown(f'<a href="data:application/pdf;base64,{base64_pdf}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:10px; background-color:#FF4B4B; color:white; border:none; border-radius:5px; cursor:pointer;">📂 서류가 안 보인다면? 여기서 열기</button></a>', unsafe_allow_html=True)
 
     st.write("---")
     col_save, col_submit, col_back = st.columns(3)
@@ -355,6 +387,7 @@ elif st.session_state.step == 'preview':
 
     with col_back:
         if st.button("⬅️ 수정하러 가기"):
+            # 수정하러 가도 세션 데이터가 살아있으므로 값이 보존됨
             st.session_state.step = 'edit'
             st.rerun()
 
@@ -364,5 +397,7 @@ elif st.session_state.step == 'complete':
     st.balloons()
     st.info("💡 제출된 서류는 담당자 메일로 안전하게 전송되었습니다. 다시 작성하시려면 아래 버튼을 눌러주세요.")
     if st.button("처음으로 돌아가기"):
+        # 세션 초기화 후 처음으로
+        for k in list(st.session_state.keys()): delete k
         st.session_state.step = 'edit'
         st.rerun()
