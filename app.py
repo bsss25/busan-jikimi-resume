@@ -21,13 +21,13 @@ from pillow_heif import register_heif_opener
 # 아이폰 사진(HEIC) 호환 설정
 register_heif_opener()
 
-# --- [0] 세션 상태 초기화 (백지화 방지용 기억장치) ---
-# 기존 초기화에 더해서 입력 필드들도 미리 만들어둬야 함
+# --- [0] 세션 상태 초기화 ---
 if 'step' not in st.session_state: st.session_state.step = 'edit'
 if 'temp_pdf' not in st.session_state: st.session_state.temp_pdf = None
+if 'preview_images' not in st.session_state: st.session_state.preview_images = []
 if 'safe_data' not in st.session_state: st.session_state.safe_data = {}
 
-# 입력값 유지를 위한 필드 초기화
+# 입력값 보존을 위한 초기화
 fields = ['school_val', 'name_val', 'birth_val', 'hphone_val', 'phone_val', 'addr_val', 'license_val', 'job_val', 'hobby_val', 'motive_val']
 for f in fields:
     if f not in st.session_state: st.session_state[f] = ""
@@ -211,8 +211,6 @@ def create_combined_pdf(pages_list, extra_files):
 # --- [4] 화면 UI ---
 st.set_page_config(page_title="배움터지킴이 서류 작성", layout="centered")
 
-# --- 단계별 화면 제어 ---
-
 # [1] 작성 페이지
 if st.session_state.step == 'edit':
     st.title("📄 부산 배움터지킴이 서류 작성")
@@ -223,18 +221,14 @@ if st.session_state.step == 'edit':
         if url_school:
             school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
         else:
-            # value에 세션 상태값을 넣어줌으로써 백지화 방지
             school = st.text_input("**지원 기관명** (예: OO초등학교)", value=st.session_state.school_val, max_chars=30)
-        
         name = st.text_input("**지원자 성명**", value=st.session_state.name_val, max_chars=10)
         birth = st.text_input("**생년월일** (예: 1960.01.01)", value=st.session_state.birth_val, max_chars=15)
     with col2:
         hphone = st.text_input("**휴대전화 번호**", value=st.session_state.hphone_val, max_chars=15)
         phone = st.text_input("일반전화(없으면 비워두기)", value=st.session_state.phone_val, max_chars=15)
-    
     addr = st.text_input("거주지 주소", value=st.session_state.addr_val, max_chars=70)
 
-    # 라디오 버튼 인덱스 처리
     exp_idx = 0 if st.session_state.has_exp_val == "없음" else 1
     has_exp = st.radio("배움터지킴이 경력 유무(실적 증명서 제출 필수)", ["없음", "있음"], index=exp_idx, horizontal=True)
     
@@ -254,7 +248,6 @@ if st.session_state.step == 'edit':
 
     with st.form("submit_section"):
         st.write("✒️ **위와 같이 배움터지킴이 자원봉사활동을 신청하며, 기재사항은 사실과 다름없음을 확인하고, 이에 서명합니다.**")
-        # 캔버스는 상태 저장이 안되므로 문구 추가
         st.caption("⚠️ 주의: 서명은 '미리보기' 클릭 전 마지막에 해주세요. (수정 시 다시 서명 필요)")
         canvas_main = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_main")
 
@@ -310,10 +303,10 @@ if st.session_state.step == 'edit':
         agree2 = st.radio("개인정보 제3자 제공 동의", ["예", "아니요"], index=0, key="agree2_btn")
         canvas_sig2 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig2")
 
-        preview_clicked = st.form_submit_button("🔍 작성 내용 미리보기")
+        preview_clicked = st.form_submit_button("🔍 내가 작성한 지원서 보기 및 제출")
 
     if preview_clicked:
-        # **중요: 미리보기 가기 전에 입력값을 세션에 저장**
+        # **입력값 세션 저장 (백지화 방지 핵심)**
         st.session_state.school_val = school
         st.session_state.name_val = name
         st.session_state.birth_val = birth
@@ -343,7 +336,10 @@ if st.session_state.step == 'edit':
                     'job': job, 'hobby': hobby, 'motive': motive,
                     'agree1': agree1, 'agree2': agree2
                 }
+                # 미리보기용 이미지 리스트 생성
                 doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
+                st.session_state.preview_images = doc_pages # 이미지 리스트 저장
+                
                 u_perf = [(f, "실적") for f in [p1, p2, p3] if f]
                 u_lic = [(f, "자격") for f in [l1, l2, l3] if f]
                 extras = u_perf + u_lic
@@ -357,17 +353,11 @@ if st.session_state.step == 'edit':
 # [2] 미리보기 페이지
 elif st.session_state.step == 'preview':
     st.title("🔍 서류 확인 및 최종 제출")
-    st.info("💡 서류를 확인해주세요. 화면이 하얗게 보인다면 아래 '서류 보기' 버튼을 눌러주세요.")
+    st.info("💡 서류를 확인해주세요. 내용이 맞으면 아래 '최종 제출하기' 버튼을 눌러주세요.")
     
-    # PDF 미리보기
-    base64_pdf = base64.b64encode(st.session_state.temp_pdf).decode('utf-8')
-    
-    # **하얀 화면 해결책: 아이프레임 외에 직접 링크 추가**
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" style="border:1px solid #eee;"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
-    
-    # 아이프레임이 안 뜨는 모바일을 위한 직접 열기 버튼
-    st.markdown(f'<a href="data:application/pdf;base64,{base64_pdf}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:10px; background-color:#FF4B4B; color:white; border:none; border-radius:5px; cursor:pointer;">📂 서류가 안 보인다면? 여기서 열기</button></a>', unsafe_allow_html=True)
+    # ⭐ 하얀 화면 해결: 이미지를 직접 화면에 띄움
+    if st.session_state.preview_images:
+        st.image(st.session_state.preview_images, caption=["1페이지(지원서)", "2페이지(동의서)"], use_container_width=True)
 
     st.write("---")
     col_save, col_submit, col_back = st.columns(3)
@@ -387,7 +377,6 @@ elif st.session_state.step == 'preview':
 
     with col_back:
         if st.button("⬅️ 수정하러 가기"):
-            # 수정하러 가도 세션 데이터가 살아있으므로 값이 보존됨
             st.session_state.step = 'edit'
             st.rerun()
 
@@ -397,9 +386,6 @@ elif st.session_state.step == 'complete':
     st.balloons()
     st.info("💡 제출된 서류는 담당자 메일로 안전하게 전송되었습니다. 다시 작성하시려면 아래 버튼을 눌러주세요.")
     if st.button("처음으로 돌아가기"):
-        # 1. 세션 상태를 싹 다 비워버림 (이게 가장 깔끔!)
         st.session_state.clear()
-        # 2. 다시 작성 단계로 설정
         st.session_state.step = 'edit'
-        # 3. 화면 새로고침
         st.rerun()
