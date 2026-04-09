@@ -32,7 +32,8 @@ if 'temp_pdf' not in st.session_state: st.session_state.temp_pdf = None
 if 'preview_images' not in st.session_state: st.session_state.preview_images = []
 if 'preview_captions' not in st.session_state: st.session_state.preview_captions = []
 if 'safe_data' not in st.session_state: st.session_state.safe_data = {}
-if 'confirm_edit' not in st.session_state: st.session_state.confirm_edit = False # 수정 확인용 추가
+if 'confirm_edit' not in st.session_state: st.session_state.confirm_edit = False 
+if 'is_submitting' not in st.session_state: st.session_state.is_submitting = False 
 
 # 입력값 보존을 위한 초기화
 fields = ['school_val', 'name_val', 'birth_val', 'hphone_val', 'phone_val', 'addr_val', 'license_val', 'job_val', 'hobby_val', 'motive_val']
@@ -54,6 +55,12 @@ def clean_text(text, max_len=100, allow_newline=False):
         text = text.replace('\n', ' ').replace('\r', ' ')
     return text.strip()[:max_len]
 
+# ⭐ 파일명 인젝션 방지 보안 필터
+def safe_filename(text):
+    if not text: return "document"
+    # 한글, 영문, 숫자만 남기고 제거 (보안 강화)
+    return re.sub(r'[^가-힣a-zA-Z0-9]', '', text)
+
 def check_file_size(file):
     if file is not None:
         if file.size > 10 * 1024 * 1024: # 10MB 제한
@@ -62,8 +69,12 @@ def check_file_size(file):
 
 # --- [1] 메일 발송 함수 ---
 def send_email(pdf_data, user_name, school_name):
+    # ⭐ 보안 처리된 이름 사용
+    s_user = safe_filename(user_name)
+    s_school = safe_filename(school_name)
+    
     msg = MIMEMultipart()
-    msg['Subject'] = f"[배움터지킴이 지원 서류] {school_name}-{user_name}"
+    msg['Subject'] = f"[배움터지킴이 지원 서류] {s_school}-{s_user}"
     msg['From'] = GMAIL_USER
     msg['To'] = RECEIVER_EMAIL
     body = f"{school_name} 배움터지킴이 지원 서류가 도착했습니다."
@@ -71,7 +82,9 @@ def send_email(pdf_data, user_name, school_name):
     part = MIMEBase('application', 'octet-stream')
     part.set_payload(pdf_data)
     encoders.encode_base64(part)
-    filename = f"{user_name}_{school_name}_지원서류.pdf"
+    
+    # ⭐ 파일명 인젝션 방지 적용
+    filename = f"{s_user}_{s_school}_지원서류.pdf"
     part.add_header('Content-Disposition', 'attachment', filename=Header(filename, 'utf-8').encode())
     msg.attach(part)
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
@@ -289,6 +302,7 @@ if st.session_state.step == 'edit':
             
 4.「아동복지법」에 따라 아동학대관련 범죄로 형 또는 치료감호를 선고받아 확정되고, 그 확정된 때부터 형 또는 치료감호의 전부 또는 일부의 집행이 종료되거나 집행을 받지 아니하기로 확정된 후 10년이 경과하지 아니한 사람
 """)
+        st.write("✒️ **지원자 본인은 위 결격사유에 해당되지 않음을 확인하고, 이에 서명합니다.**")
         canvas_sig1 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig1")
 
         st.write("---")
@@ -309,12 +323,12 @@ if st.session_state.step == 'edit':
 * **보유 기간:** 1년
 """)
         agree2 = st.radio("개인정보 제3자 제공 동의", ["예", "아니요"], index=0, key="agree2_btn")
+        st.write("✒️ **지원자 본인은 개인정보가 위와 같이 처리될 수 있음에 동의하며, 이에 서명합니다.**")
         canvas_sig2 = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_sig2")
 
         preview_clicked = st.form_submit_button("🔍 내가 작성한 지원서 보기 및 제출")
 
     if preview_clicked:
-        # **입력값 세션 저장**
         st.session_state.update({
             'school_val': school, 'name_val': name, 'birth_val': birth, 'hphone_val': hphone,
             'phone_val': phone, 'addr_val': addr, 'has_exp_val': has_exp, 'exp_data_val': exp_data,
@@ -339,7 +353,6 @@ if st.session_state.step == 'edit':
                 }
                 
                 doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
-                
                 u_perf = [(f, "실적") for f in [p1, p2, p3] if f]
                 u_lic = [(f, "자격") for f in [l1, l2, l3] if f]
                 extras = u_perf + u_lic
@@ -373,8 +386,7 @@ if st.session_state.step == 'edit':
                                 preview_list.append(pix.tobytes("png"))
                                 preview_caps.append(f"첨부파일({label}) - {page_num + 1}쪽")
                             pdf_doc.close()
-                        except:
-                            pass 
+                        except: pass 
                 
                 st.session_state.preview_images = preview_list
                 st.session_state.preview_captions = preview_caps
@@ -396,7 +408,6 @@ elif st.session_state.step == 'preview':
 
     st.write("---")
     
-    # ⭐ [수정] 수정하러 가기 확인 창 로직
     if st.session_state.confirm_edit:
         st.warning("⚠️ 지원서를 수정하면 서명과 각종 첨부파일 등록을 다시 해야 합니다. 수정하시겠습니까?")
         c_yes, c_no = st.columns(2)
@@ -410,18 +421,30 @@ elif st.session_state.step == 'preview':
                 st.session_state.confirm_edit = False
                 st.rerun()
     else:
+        # 실제 전송 로직 수행 (is_submitting이 True일 때만 실행)
+        if st.session_state.get('is_submitting', False):
+            try:
+                with st.spinner("📧 서류를 전송 중..."):
+                    send_email(st.session_state.temp_pdf, st.session_state.safe_data['name'], st.session_state.safe_data['school'])
+                    st.session_state.is_submitting = False 
+                    st.session_state.step = 'complete'
+                    st.rerun()
+            except Exception as e:
+                st.session_state.is_submitting = False 
+                st.error(f"❌ 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+                print(f"DEBUG ERROR: {e}")
+        
         col_save, col_submit, col_back = st.columns(3)
         with col_save:
-            st.download_button("💾 내 기기에 저장하기", st.session_state.temp_pdf, f"{st.session_state.safe_data['name']}_지원서.pdf", "application/pdf")
+            # ⭐ 강화된 파일명 적용
+            s_name = safe_filename(st.session_state.safe_data['name'])
+            st.download_button("💾 내 기기에 저장하기", st.session_state.temp_pdf, f"{s_name}_지원서.pdf", "application/pdf")
+        
         with col_submit:
-            if st.button("🚀 최종 제출하기"):
-                try:
-                    with st.spinner("📧 서류를 전송 중..."):
-                        send_email(st.session_state.temp_pdf, st.session_state.safe_data['name'], st.session_state.safe_data['school'])
-                        st.session_state.step = 'complete'
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"❌ 전송 오류: {e}")
+            if st.button("🚀 최종 제출하기", disabled=st.session_state.is_submitting):
+                st.session_state.is_submitting = True
+                st.rerun()
+                
         with col_back:
             if st.button("⬅️ 수정하러 가기"):
                 st.session_state.confirm_edit = True
