@@ -42,7 +42,7 @@ if 'exp_data_val' not in st.session_state: st.session_state.exp_data_val = [{"pe
 
 # --- 보안 설정 (Secrets 활용) ---
 GMAIL_USER = st.secrets["GMAIL_USER"]
-GMAIL_APP_PW = st.secrets["GMAIL_PW"]
+GMAIL_APP_PW = st.secrets["GMAIL_APP_PW"]
 RECEIVER_EMAIL = st.secrets["RECEIVER_EMAIL"]
 
 # --- [보안/편의 함수] ---
@@ -187,11 +187,14 @@ def create_combined_pdf(pages_list, extra_files):
         if file is not None:
             file.seek(0)
             if file.name.lower().endswith('.pdf'):
-                try: writer.append(file)
+                try: 
+                    file.seek(0)
+                    writer.append(file)
                 except: continue
             else:
                 try:
                     img = Image.open(file).convert("RGB")
+                    # 메인 PDF 생성시에도 회전 문제 해결
                     img = ImageOps.exif_transpose(img)
                     img_w, img_h = img.size
                     ratio = min(draw_w / img_w, draw_h / img_h)
@@ -228,11 +231,13 @@ if st.session_state.step == 'edit':
             school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
         else:
             school = st.text_input("**지원 기관명** (예: OO초등학교)", value=st.session_state.school_val, max_chars=30)
+        
         name = st.text_input("**지원자 성명**", value=st.session_state.name_val, max_chars=10)
         birth = st.text_input("**생년월일** (예: 1960.01.01)", value=st.session_state.birth_val, max_chars=15)
     with col2:
         hphone = st.text_input("**휴대전화 번호**", value=st.session_state.hphone_val, max_chars=15)
         phone = st.text_input("일반전화(없으면 비워두기)", value=st.session_state.phone_val, max_chars=15)
+    
     addr = st.text_input("거주지 주소", value=st.session_state.addr_val, max_chars=70)
 
     exp_idx = 0 if st.session_state.has_exp_val == "없음" else 1
@@ -254,6 +259,7 @@ if st.session_state.step == 'edit':
 
     with st.form("submit_section"):
         st.write("✒️ **위와 같이 배움터지킴이 자원봉사활동을 신청하며, 기재사항은 사실과 다름없음을 확인하고, 이에 서명합니다.**")
+        st.caption("⚠️ 주의: 서명은 '미리보기' 클릭 전 마지막에 해주세요. (수정 시 다시 서명 필요)")
         canvas_main = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_main")
 
         st.write("---")
@@ -334,6 +340,7 @@ if st.session_state.step == 'edit':
                     'job': job, 'hobby': hobby, 'motive': motive,
                     'agree1': agree1, 'agree2': agree2
                 }
+                
                 # 1. 지원서 이미지 생성
                 doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
                 
@@ -350,10 +357,22 @@ if st.session_state.step == 'edit':
                 
                 for f, label in extras:
                     f.seek(0)
-                    # 1. 이미지 파일 처리
+                    # 1. 이미지 파일 처리 (폰 회전 문제 해결 추가)
                     if f.name.lower().endswith(('.jpg', '.jpeg', '.png')):
-                        preview_list.append(f.read())
-                        preview_caps.append(f"첨부파일 - {label}")
+                        try:
+                            # PIL로 열고 EXIF 정보 기준으로 회전 적용
+                            temp_img = Image.open(f)
+                            temp_img = ImageOps.exif_transpose(temp_img)
+                            # byte stream으로 변환하여 미리보기 리스트에 추가
+                            temp_buf = io.BytesIO()
+                            temp_img.save(temp_buf, format='JPEG', quality=75) # Decent quality for preview
+                            preview_list.append(temp_buf.getvalue())
+                            preview_caps.append(f"첨부파일 - {label}")
+                        except:
+                            # 이미지 로드 실패 시 원본 그대로 시도 (비 HEIC 등)
+                            f.seek(0)
+                            preview_list.append(f.read())
+                            preview_caps.append(f"첨부파일 - {label}")
                     
                     # 2. PDF 파일 처리
                     elif f.name.lower().endswith('.pdf'):
@@ -367,12 +386,10 @@ if st.session_state.step == 'edit':
                                 preview_caps.append(f"첨부파일({label}) - {page_num + 1}쪽")
                             pdf_doc.close()
                         except:
-                            # ⚠️ 실패 시 자막만 추가하던 기존 버그 수정: 
                             # 변환 실패하면 아예 리스트에 아무것도 안 넣거나, 둘 다 넣어야 함
                             # 여기서는 안전하게 아무것도 넣지 않고 넘어갑니다.
                             pass 
                 
-                # 최종적으로 세션에 저장
                 st.session_state.preview_images = preview_list
                 st.session_state.preview_captions = preview_caps
                 
@@ -386,6 +403,7 @@ elif st.session_state.step == 'preview':
     st.title("🔍 서류 확인 및 최종 제출")
     st.info("💡 서류와 첨부파일을 확인해주세요. 내용이 맞으면 아래 '🚀 최종 제출하기' 버튼을 눌러주세요.")
     
+    # ⭐ 지원서 + 첨부이미지 모두 출력
     if st.session_state.preview_images:
         st.image(
             st.session_state.preview_images, 

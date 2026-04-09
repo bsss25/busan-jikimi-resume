@@ -4,3 +4,4 @@ pillow-heif
 reportlab
 streamlit-drawable-canvas
 pypdf
+pymupdf
