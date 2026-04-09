@@ -17,6 +17,11 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from pillow_heif import register_heif_opener
+# PDF 변환을 위한 라이브러리 추가
+try:
+    import fitz 
+except ImportError:
+    pass
 
 # 아이폰 사진(HEIC) 호환 설정
 register_heif_opener()
@@ -25,6 +30,7 @@ register_heif_opener()
 if 'step' not in st.session_state: st.session_state.step = 'edit'
 if 'temp_pdf' not in st.session_state: st.session_state.temp_pdf = None
 if 'preview_images' not in st.session_state: st.session_state.preview_images = []
+if 'preview_captions' not in st.session_state: st.session_state.preview_captions = []
 if 'safe_data' not in st.session_state: st.session_state.safe_data = {}
 
 # 입력값 보존을 위한 초기화
@@ -222,13 +228,11 @@ if st.session_state.step == 'edit':
             school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
         else:
             school = st.text_input("**지원 기관명** (예: OO초등학교)", value=st.session_state.school_val, max_chars=30)
-        
         name = st.text_input("**지원자 성명**", value=st.session_state.name_val, max_chars=10)
         birth = st.text_input("**생년월일** (예: 1960.01.01)", value=st.session_state.birth_val, max_chars=15)
     with col2:
         hphone = st.text_input("**휴대전화 번호**", value=st.session_state.hphone_val, max_chars=15)
         phone = st.text_input("일반전화(없으면 비워두기)", value=st.session_state.phone_val, max_chars=15)
-    
     addr = st.text_input("거주지 주소", value=st.session_state.addr_val, max_chars=70)
 
     exp_idx = 0 if st.session_state.has_exp_val == "없음" else 1
@@ -250,7 +254,6 @@ if st.session_state.step == 'edit':
 
     with st.form("submit_section"):
         st.write("✒️ **위와 같이 배움터지킴이 자원봉사활동을 신청하며, 기재사항은 사실과 다름없음을 확인하고, 이에 서명합니다.**")
-        st.caption("⚠️ 주의: 서명은 '미리보기' 클릭 전 마지막에 해주세요. (수정 시 다시 서명 필요)")
         canvas_main = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_main")
 
         st.write("---")
@@ -308,19 +311,12 @@ if st.session_state.step == 'edit':
         preview_clicked = st.form_submit_button("🔍 내가 작성한 지원서 보기 및 제출")
 
     if preview_clicked:
-        # **입력값 세션 저장 (백지화 방지)**
-        st.session_state.school_val = school
-        st.session_state.name_val = name
-        st.session_state.birth_val = birth
-        st.session_state.hphone_val = hphone
-        st.session_state.phone_val = phone
-        st.session_state.addr_val = addr
-        st.session_state.has_exp_val = has_exp
-        st.session_state.exp_data_val = exp_data
-        st.session_state.license_val = license
-        st.session_state.job_val = job
-        st.session_state.hobby_val = hobby
-        st.session_state.motive_val = motive
+        # **입력값 세션 저장**
+        st.session_state.update({
+            'school_val': school, 'name_val': name, 'birth_val': birth, 'hphone_val': hphone,
+            'phone_val': phone, 'addr_val': addr, 'has_exp_val': has_exp, 'exp_data_val': exp_data,
+            'license_val': license, 'job_val': job, 'hobby_val': hobby, 'motive_val': motive
+        })
 
         if not school or not name or not birth or not hphone:
             st.error("⚠️ 지원 기관명, 성명, 생년월일, 휴대폰 번호는 필수 입력 항목입니다!")
@@ -338,7 +334,6 @@ if st.session_state.step == 'edit':
                     'job': job, 'hobby': hobby, 'motive': motive,
                     'agree1': agree1, 'agree2': agree2
                 }
-                
                 # 1. 지원서 이미지 생성
                 doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
                 
@@ -349,16 +344,27 @@ if st.session_state.step == 'edit':
                 if u_cert: extras.append((u_cert, "경력"))
                 if u_etc: extras.append((u_etc, "기타"))
                 
-                # ⭐ [미리보기 이미지 합치기] 지원서 2장 + 첨부된 이미지파일들
+                # ⭐ [미리보기 이미지 합치기] 지원서 2장 + 첨부파일(이미지 및 PDF 전 페이지)
                 preview_list = list(doc_pages)
                 preview_caps = ["1페이지(지원서)", "2페이지(동의서)"]
                 
-                # 첨부파일 중 이미지인 것만 미리보기에 추가
                 for f, label in extras:
+                    f.seek(0)
                     if f.name.lower().endswith(('.jpg', '.jpeg', '.png')):
-                        f.seek(0)
                         preview_list.append(f.read())
                         preview_caps.append(f"첨부파일 - {label}")
+                    elif f.name.lower().endswith('.pdf'):
+                        try:
+                            # PDF의 모든 페이지를 이미지로 변환하여 리스트에 추가
+                            pdf_doc = fitz.open(stream=f.read(), filetype="pdf")
+                            for page_num in range(len(pdf_doc)):
+                                page = pdf_doc.load_page(page_num)
+                                pix = page.get_pixmap()
+                                preview_list.append(pix.tobytes("png"))
+                                preview_caps.append(f"첨부파일({label}) - {page_num + 1}쪽")
+                            pdf_doc.close()
+                        except:
+                            preview_caps.append(f"첨부파일(PDF 미리보기 실패) - {label}")
                 
                 st.session_state.preview_images = preview_list
                 st.session_state.preview_captions = preview_caps
@@ -373,7 +379,6 @@ elif st.session_state.step == 'preview':
     st.title("🔍 서류 확인 및 최종 제출")
     st.info("💡 서류와 첨부파일을 확인해주세요. 내용이 맞으면 아래 '🚀 최종 제출하기' 버튼을 눌러주세요.")
     
-    # ⭐ 지원서 + 첨부이미지 모두 출력
     if st.session_state.preview_images:
         st.image(
             st.session_state.preview_images, 
