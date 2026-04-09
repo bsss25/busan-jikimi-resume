@@ -222,11 +222,13 @@ if st.session_state.step == 'edit':
             school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
         else:
             school = st.text_input("**지원 기관명** (예: OO초등학교)", value=st.session_state.school_val, max_chars=30)
+        
         name = st.text_input("**지원자 성명**", value=st.session_state.name_val, max_chars=10)
         birth = st.text_input("**생년월일** (예: 1960.01.01)", value=st.session_state.birth_val, max_chars=15)
     with col2:
         hphone = st.text_input("**휴대전화 번호**", value=st.session_state.hphone_val, max_chars=15)
         phone = st.text_input("일반전화(없으면 비워두기)", value=st.session_state.phone_val, max_chars=15)
+    
     addr = st.text_input("거주지 주소", value=st.session_state.addr_val, max_chars=70)
 
     exp_idx = 0 if st.session_state.has_exp_val == "없음" else 1
@@ -306,7 +308,7 @@ if st.session_state.step == 'edit':
         preview_clicked = st.form_submit_button("🔍 내가 작성한 지원서 보기 및 제출")
 
     if preview_clicked:
-        # **입력값 세션 저장 (백지화 방지 핵심)**
+        # **입력값 세션 저장 (백지화 방지)**
         st.session_state.school_val = school
         st.session_state.name_val = name
         st.session_state.birth_val = birth
@@ -336,16 +338,32 @@ if st.session_state.step == 'edit':
                     'job': job, 'hobby': hobby, 'motive': motive,
                     'agree1': agree1, 'agree2': agree2
                 }
-                # 미리보기용 이미지 리스트 생성
-                doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
-                st.session_state.preview_images = doc_pages # 이미지 리스트 저장
                 
+                # 1. 지원서 이미지 생성
+                doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
+                
+                # 2. 첨부파일 리스트 정리 (PDF 생성용)
                 u_perf = [(f, "실적") for f in [p1, p2, p3] if f]
                 u_lic = [(f, "자격") for f in [l1, l2, l3] if f]
                 extras = u_perf + u_lic
                 if u_cert: extras.append((u_cert, "경력"))
                 if u_etc: extras.append((u_etc, "기타"))
                 
+                # ⭐ [미리보기 이미지 합치기] 지원서 2장 + 첨부된 이미지파일들
+                preview_list = list(doc_pages)
+                preview_caps = ["1페이지(지원서)", "2페이지(동의서)"]
+                
+                # 첨부파일 중 이미지인 것만 미리보기에 추가
+                for f, label in extras:
+                    if f.name.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        f.seek(0)
+                        preview_list.append(f.read())
+                        preview_caps.append(f"첨부파일 - {label}")
+                
+                st.session_state.preview_images = preview_list
+                st.session_state.preview_captions = preview_caps
+                
+                # 3. 최종 PDF 데이터 생성
                 st.session_state.temp_pdf = create_combined_pdf(doc_pages, extras)
                 st.session_state.step = 'preview'
                 st.rerun()
@@ -353,11 +371,15 @@ if st.session_state.step == 'edit':
 # [2] 미리보기 페이지
 elif st.session_state.step == 'preview':
     st.title("🔍 서류 확인 및 최종 제출")
-    st.info("💡 서류를 확인해주세요. 내용이 맞으면 아래 '최종 제출하기' 버튼을 눌러주세요.")
+    st.info("💡 서류와 첨부파일을 확인해주세요. 내용이 맞으면 아래 '🚀 최종 제출하기' 버튼을 눌러주세요.")
     
-    # ⭐ 하얀 화면 해결: 이미지를 직접 화면에 띄움
+    # ⭐ 지원서 + 첨부이미지 모두 출력
     if st.session_state.preview_images:
-        st.image(st.session_state.preview_images, caption=["1페이지(지원서)", "2페이지(동의서)"], use_container_width=True)
+        st.image(
+            st.session_state.preview_images, 
+            caption=st.session_state.get('preview_captions', []), 
+            use_container_width=True
+        )
 
     st.write("---")
     col_save, col_submit, col_back = st.columns(3)
