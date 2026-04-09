@@ -32,6 +32,7 @@ if 'temp_pdf' not in st.session_state: st.session_state.temp_pdf = None
 if 'preview_images' not in st.session_state: st.session_state.preview_images = []
 if 'preview_captions' not in st.session_state: st.session_state.preview_captions = []
 if 'safe_data' not in st.session_state: st.session_state.safe_data = {}
+if 'confirm_edit' not in st.session_state: st.session_state.confirm_edit = False # 수정 확인용 추가
 
 # 입력값 보존을 위한 초기화
 fields = ['school_val', 'name_val', 'birth_val', 'hphone_val', 'phone_val', 'addr_val', 'license_val', 'job_val', 'hobby_val', 'motive_val']
@@ -194,7 +195,6 @@ def create_combined_pdf(pages_list, extra_files):
             else:
                 try:
                     img = Image.open(file).convert("RGB")
-                    # 메인 PDF 생성시에도 회전 문제 해결
                     img = ImageOps.exif_transpose(img)
                     img_w, img_h = img.size
                     ratio = min(draw_w / img_w, draw_h / img_h)
@@ -202,7 +202,7 @@ def create_combined_pdf(pages_list, extra_files):
                     x, y = (w_a4 - new_w) / 2, (h_a4 - new_h) / 2
                     
                     img_buf = io.BytesIO()
-                    img.save(img_buf, format='JPEG', quality=50) # 압축
+                    img.save(img_buf, format='JPEG', quality=50) 
                     img_buf.seek(0)
                     
                     tmp_buf = io.BytesIO()
@@ -231,13 +231,11 @@ if st.session_state.step == 'edit':
             school = st.text_input("**지원 기관명**", value=url_school, disabled=True)
         else:
             school = st.text_input("**지원 기관명** (예: OO초등학교)", value=st.session_state.school_val, max_chars=30)
-        
         name = st.text_input("**지원자 성명**", value=st.session_state.name_val, max_chars=10)
         birth = st.text_input("**생년월일** (예: 1960.01.01)", value=st.session_state.birth_val, max_chars=15)
     with col2:
         hphone = st.text_input("**휴대전화 번호**", value=st.session_state.hphone_val, max_chars=15)
         phone = st.text_input("일반전화(없으면 비워두기)", value=st.session_state.phone_val, max_chars=15)
-    
     addr = st.text_input("거주지 주소", value=st.session_state.addr_val, max_chars=70)
 
     exp_idx = 0 if st.session_state.has_exp_val == "없음" else 1
@@ -259,7 +257,6 @@ if st.session_state.step == 'edit':
 
     with st.form("submit_section"):
         st.write("✒️ **위와 같이 배움터지킴이 자원봉사활동을 신청하며, 기재사항은 사실과 다름없음을 확인하고, 이에 서명합니다.**")
-        st.caption("⚠️ 주의: 서명은 '미리보기' 클릭 전 마지막에 해주세요. (수정 시 다시 서명 필요)")
         canvas_main = st_canvas(stroke_width=3, stroke_color="black", background_color="rgba(0,0,0,0)", height=150, width=300, key="canvas_main")
 
         st.write("---")
@@ -341,59 +338,46 @@ if st.session_state.step == 'edit':
                     'agree1': agree1, 'agree2': agree2
                 }
                 
-                # 1. 지원서 이미지 생성
                 doc_pages = make_documents(st.session_state.safe_data, u_photo, canvas_main.image_data, canvas_sig1.image_data, canvas_sig2.image_data)
                 
-                # 2. 첨부파일 리스트 정리 (PDF 생성용)
                 u_perf = [(f, "실적") for f in [p1, p2, p3] if f]
                 u_lic = [(f, "자격") for f in [l1, l2, l3] if f]
                 extras = u_perf + u_lic
                 if u_cert: extras.append((u_cert, "경력"))
                 if u_etc: extras.append((u_etc, "기타"))
                 
-                # ⭐ [수정된 미리보기 이미지 합치기] 지원서 2장 + 첨부파일(이미지 및 PDF 전 페이지)
                 preview_list = list(doc_pages)
                 preview_caps = ["1페이지(지원서)", "2페이지(동의서)"]
                 
                 for f, label in extras:
                     f.seek(0)
-                    # 1. 이미지 파일 처리 (폰 회전 문제 해결 추가)
                     if f.name.lower().endswith(('.jpg', '.jpeg', '.png')):
                         try:
-                            # PIL로 열고 EXIF 정보 기준으로 회전 적용
                             temp_img = Image.open(f)
                             temp_img = ImageOps.exif_transpose(temp_img)
-                            # byte stream으로 변환하여 미리보기 리스트에 추가
                             temp_buf = io.BytesIO()
-                            temp_img.save(temp_buf, format='JPEG', quality=75) # Decent quality for preview
+                            temp_img.save(temp_buf, format='JPEG', quality=75)
                             preview_list.append(temp_buf.getvalue())
                             preview_caps.append(f"첨부파일 - {label}")
                         except:
-                            # 이미지 로드 실패 시 원본 그대로 시도 (비 HEIC 등)
                             f.seek(0)
                             preview_list.append(f.read())
                             preview_caps.append(f"첨부파일 - {label}")
-                    
-                    # 2. PDF 파일 처리
                     elif f.name.lower().endswith('.pdf'):
                         try:
                             pdf_doc = fitz.open(stream=f.read(), filetype="pdf")
+                            mat = fitz.Matrix(2, 2)
                             for page_num in range(len(pdf_doc)):
                                 page = pdf_doc.load_page(page_num)
-                                pix = page.get_pixmap()
-                                # 리스트에 이미지와 자막을 '동시에' 추가해야 에러가 안 납니다!
+                                pix = page.get_pixmap(matrix=mat)
                                 preview_list.append(pix.tobytes("png"))
                                 preview_caps.append(f"첨부파일({label}) - {page_num + 1}쪽")
                             pdf_doc.close()
                         except:
-                            # 변환 실패하면 아예 리스트에 아무것도 안 넣거나, 둘 다 넣어야 함
-                            # 여기서는 안전하게 아무것도 넣지 않고 넘어갑니다.
                             pass 
                 
                 st.session_state.preview_images = preview_list
                 st.session_state.preview_captions = preview_caps
-                
-                # 3. 최종 PDF 데이터 생성
                 st.session_state.temp_pdf = create_combined_pdf(doc_pages, extras)
                 st.session_state.step = 'preview'
                 st.rerun()
@@ -403,7 +387,6 @@ elif st.session_state.step == 'preview':
     st.title("🔍 서류 확인 및 최종 제출")
     st.info("💡 서류와 첨부파일을 확인해주세요. 내용이 맞으면 아래 '🚀 최종 제출하기' 버튼을 눌러주세요.")
     
-    # ⭐ 지원서 + 첨부이미지 모두 출력
     if st.session_state.preview_images:
         st.image(
             st.session_state.preview_images, 
@@ -412,25 +395,37 @@ elif st.session_state.step == 'preview':
         )
 
     st.write("---")
-    col_save, col_submit, col_back = st.columns(3)
     
-    with col_save:
-        st.download_button("💾 내 기기에 저장하기", st.session_state.temp_pdf, f"{st.session_state.safe_data['name']}_지원서.pdf", "application/pdf")
-    
-    with col_submit:
-        if st.button("🚀 최종 제출하기"):
-            try:
-                with st.spinner("📧 서류를 전송 중..."):
-                    send_email(st.session_state.temp_pdf, st.session_state.safe_data['name'], st.session_state.safe_data['school'])
-                    st.session_state.step = 'complete'
-                    st.rerun()
-            except Exception as e:
-                st.error(f"❌ 전송 오류: {e}")
-
-    with col_back:
-        if st.button("⬅️ 수정하러 가기"):
-            st.session_state.step = 'edit'
-            st.rerun()
+    # ⭐ [수정] 수정하러 가기 확인 창 로직
+    if st.session_state.confirm_edit:
+        st.warning("⚠️ 지원서를 수정하면 서명과 각종 첨부파일 등록을 다시 해야 합니다. 수정하시겠습니까?")
+        c_yes, c_no = st.columns(2)
+        with c_yes:
+            if st.button("✅ 예, 수정하겠습니다"):
+                st.session_state.confirm_edit = False
+                st.session_state.step = 'edit'
+                st.rerun()
+        with c_no:
+            if st.button("❌ 아니요, 그대로 둘게요"):
+                st.session_state.confirm_edit = False
+                st.rerun()
+    else:
+        col_save, col_submit, col_back = st.columns(3)
+        with col_save:
+            st.download_button("💾 내 기기에 저장하기", st.session_state.temp_pdf, f"{st.session_state.safe_data['name']}_지원서.pdf", "application/pdf")
+        with col_submit:
+            if st.button("🚀 최종 제출하기"):
+                try:
+                    with st.spinner("📧 서류를 전송 중..."):
+                        send_email(st.session_state.temp_pdf, st.session_state.safe_data['name'], st.session_state.safe_data['school'])
+                        st.session_state.step = 'complete'
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"❌ 전송 오류: {e}")
+        with col_back:
+            if st.button("⬅️ 수정하러 가기"):
+                st.session_state.confirm_edit = True
+                st.rerun()
 
 # [3] 완료 페이지
 elif st.session_state.step == 'complete':
