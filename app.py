@@ -397,7 +397,9 @@ elif st.session_state.step == 'complete':
     st.balloons()
     st.info("💡 제출된 서류는 담당자 메일로 안전하게 전송되었습니다. 다시 작성하시려면 아래 버튼을 눌러주세요.")
     if st.button("처음으로 돌아가기"):
-        # 세션 초기화 후 처음으로
-        for k in list(st.session_state.keys()): delete k
+        # 1. 세션 상태를 싹 다 비워버림 (이게 가장 깔끔!)
+        st.session_state.clear()
+        # 2. 다시 작성 단계로 설정
         st.session_state.step = 'edit'
+        # 3. 화면 새로고침
         st.rerun()
