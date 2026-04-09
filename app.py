@@ -84,7 +84,7 @@ def send_email(pdf_data, user_name, school_name):
     encoders.encode_base64(part)
     
     # ⭐ 파일명 인젝션 방지 적용
-    filename = f"{s_user}_{s_school}_지원서류.pdf"
+    filename = f"[배움터지킴이] {s_user} {s_school} 지원서류.pdf"
     part.add_header('Content-Disposition', 'attachment', filename=Header(filename, 'utf-8').encode())
     msg.attach(part)
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
