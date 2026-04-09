@@ -344,28 +344,35 @@ if st.session_state.step == 'edit':
                 if u_cert: extras.append((u_cert, "경력"))
                 if u_etc: extras.append((u_etc, "기타"))
                 
-                # ⭐ [미리보기 이미지 합치기] 지원서 2장 + 첨부파일(이미지 및 PDF 전 페이지)
+                # ⭐ [수정된 미리보기 이미지 합치기] 지원서 2장 + 첨부파일(이미지 및 PDF 전 페이지)
                 preview_list = list(doc_pages)
                 preview_caps = ["1페이지(지원서)", "2페이지(동의서)"]
                 
                 for f, label in extras:
                     f.seek(0)
+                    # 1. 이미지 파일 처리
                     if f.name.lower().endswith(('.jpg', '.jpeg', '.png')):
                         preview_list.append(f.read())
                         preview_caps.append(f"첨부파일 - {label}")
+                    
+                    # 2. PDF 파일 처리
                     elif f.name.lower().endswith('.pdf'):
                         try:
-                            # PDF의 모든 페이지를 이미지로 변환하여 리스트에 추가
                             pdf_doc = fitz.open(stream=f.read(), filetype="pdf")
                             for page_num in range(len(pdf_doc)):
                                 page = pdf_doc.load_page(page_num)
                                 pix = page.get_pixmap()
+                                # 리스트에 이미지와 자막을 '동시에' 추가해야 에러가 안 납니다!
                                 preview_list.append(pix.tobytes("png"))
                                 preview_caps.append(f"첨부파일({label}) - {page_num + 1}쪽")
                             pdf_doc.close()
                         except:
-                            preview_caps.append(f"첨부파일(PDF 미리보기 실패) - {label}")
+                            # ⚠️ 실패 시 자막만 추가하던 기존 버그 수정: 
+                            # 변환 실패하면 아예 리스트에 아무것도 안 넣거나, 둘 다 넣어야 함
+                            # 여기서는 안전하게 아무것도 넣지 않고 넘어갑니다.
+                            pass 
                 
+                # 최종적으로 세션에 저장
                 st.session_state.preview_images = preview_list
                 st.session_state.preview_captions = preview_caps
                 
